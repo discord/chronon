@@ -1,9 +1,9 @@
 # Start from a Debian base image
-FROM openjdk:8-jre-slim
+FROM openjdk:11-jre-slim
 
 # Set this manually before building the image, requires a local build of the jar
 
-ENV CHRONON_JAR_PATH=spark/target-embedded/scala-2.12/your_build.jar
+ENV CHRONON_JAR_PATH=spark/target-embedded/scala-2.12/spark_embedded-assembly-spark-upgrade-0.0.87-SNAPSHOT.jar
 
 # Update package lists and install necessary tools
 RUN apt-get update && apt-get install -y \
@@ -43,8 +43,8 @@ ENV PATH=${PATH}:${SCALA_HOME}/bin
 # Optional env variables
 ENV SPARK_HOME=${SPARK_HOME:-"/opt/spark"}
 ENV HADOOP_HOME=${HADOOP_HOME:-"/opt/hadoop"}
-ENV SPARK_VERSION=${SPARK_VERSION:-"3.1.1"}
-ENV HADOOP_VERSION=${HADOOP_VERSION:-"3.2"}
+ENV SPARK_VERSION=${SPARK_VERSION:-"3.5.3"}
+ENV HADOOP_VERSION=${HADOOP_VERSION:-"3"}
 RUN mkdir -p ${HADOOP_HOME} && mkdir -p ${SPARK_HOME}
 RUN mkdir -p /opt/spark/spark-events
 WORKDIR ${SPARK_HOME}
@@ -71,7 +71,7 @@ RUN chmod u+x /opt/spark/sbin/* && \
 ENV PYTHONPATH=$SPARK_HOME/python/:/srv/chronon/:$PYTHONPATH
 
 # If trying a standalone docker cluster
-WORKDIR ${SPARK_HOME}
+#WORKDIR ${SPARK_HOME}
 # If doing a regular local spark box.
 WORKDIR /srv/chronon
 
