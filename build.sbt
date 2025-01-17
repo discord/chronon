@@ -39,7 +39,7 @@ ThisBuild / developers := List(
 ThisBuild / assembly / test := {}
 
 val use_spark_3_5 = settingKey[Boolean]("Flag to build for 3.5")
-ThisBuild / use_spark_3_5 := false
+ThisBuild / use_spark_3_5 := true
 
 def buildTimestampSuffix = ";build.timestamp=" + new java.util.Date().getTime
 lazy val publishSettings = Seq(
