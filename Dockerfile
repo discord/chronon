@@ -1,9 +1,12 @@
 # Start from a Debian base image
 FROM openjdk:11-jre-slim
 
+ARG CHRONON_GIT_BRANCH
+ARG CHRONON_VERSION
+
 # Set this manually before building the image, requires a local build of the jar
 
-ENV CHRONON_JAR_PATH=spark/target-embedded/scala-2.12/spark_embedded-assembly-spark-upgrade-0.0.87-SNAPSHOT.jar
+ENV CHRONON_JAR_PATH=spark/target-embedded/scala-2.12/spark_embedded-assembly-${CHRONON_GIT_BRANCH}-${CHRONON_VERSION}.jar
 
 # Update package lists and install necessary tools
 RUN apt-get update && apt-get install -y \

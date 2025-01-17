@@ -36,15 +36,19 @@ services:
       KAFKA_MESSAGE_MAX_BYTES: 2147483647
 
   main:
-    image: ezvz/chronon
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      args:
+        CHRONON_GIT_BRANCH: ${GIT_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}
+        CHRONON_VERSION: ${VERSION:-$(grep 'version' version.sbt | sed -E 's/.*"(.+)".*/\1/')}
     command: bash -c "spark-shell -i scripts/data-loader.scala && tail -f /dev/null"
     ports:
       - "4040:4040"
     environment:
       - USER=root
       - SPARK_SUBMIT_PATH=spark-submit
-      - PYTHONPATH=/srv/chronon
-      - SPARK_VERSION=3.1.1
+      - SPARK_VERSION=3.5.3
       - JOB_MODE=local[*]
       - PARALLELISM=2
       - EXECUTOR_MEMORY=2G
