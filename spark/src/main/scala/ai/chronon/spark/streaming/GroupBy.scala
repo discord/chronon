@@ -23,24 +23,23 @@ import ai.chronon.api.{Row => _, _}
 import ai.chronon.online._
 import ai.chronon.api.Extensions._
 import ai.chronon.online.Extensions.ChrononStructTypeOps
-import ai.chronon.spark.GenericRowHandler
+import ai.chronon.spark.{EncoderUtil, GenericRowHandler}
 import com.google.gson.Gson
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.streaming.{DataStreamWriter, StreamingQuery, Trigger}
 
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneId, ZoneOffset}
 import java.util.Base64
 import scala.collection.JavaConverters._
-import scala.concurrent.duration.{DurationInt}
+import scala.concurrent.duration.DurationInt
 
 class GroupBy(inputStream: DataFrame,
               session: SparkSession,
               groupByConf: api.GroupBy,
               onlineImpl: Api,
               debug: Boolean = false)
-    extends Serializable {
+  extends Serializable {
   @transient implicit lazy val logger = LoggerFactory.getLogger(getClass)
 
   private def buildStreamingQuery(inputTable: String): String = {
@@ -86,7 +85,7 @@ class GroupBy(inputStream: DataFrame,
 
     val streamDecoder = onlineImpl.streamDecoder(groupByServingInfo)
     assert(groupByConf.streamingSource.isDefined,
-           "No streaming source defined in GroupBy. Please set a topic/mutationTopic.")
+      "No streaming source defined in GroupBy. Please set a topic/mutationTopic.")
     val streamingSource = groupByConf.streamingSource.get
 
     val streamingQuery = buildStreamingQuery(streamingTable)
@@ -117,26 +116,26 @@ class GroupBy(inputStream: DataFrame,
 
     val streamSchema = SparkConversions.fromChrononSchema(streamDecoder.schema)
     logger.info(s"""
-        | group by serving info: $groupByServingInfo
-        | Streaming source: $streamingSource
-        | streaming Query: $streamingQuery
-        | streaming dataset: ${groupByConf.streamingDataset}
-        | stream schema: $streamSchema
-        |""".stripMargin)
+                   | group by serving info: $groupByServingInfo
+                   | Streaming source: $streamingSource
+                   | streaming Query: $streamingQuery
+                   | streaming dataset: ${groupByConf.streamingDataset}
+                   | stream schema: $streamSchema
+                   |""".stripMargin)
 
     val des = deserialized
       .flatMap { mutation =>
         Seq(mutation.after, mutation.before)
           .filter(_ != null)
           .map(SparkConversions.toSparkRow(_, streamDecoder.schema, GenericRowHandler.func).asInstanceOf[Row])
-      }(RowEncoder(streamSchema))
+      }(EncoderUtil(streamSchema))
 
     des.createOrReplaceTempView(streamingTable)
 
     groupByConf.setups.foreach(session.sql)
     val selectedDf = session.sql(streamingQuery)
     assert(selectedDf.schema.fieldNames.contains(Constants.TimeColumn),
-           s"time column ${Constants.TimeColumn} must be included in the selects")
+      s"time column ${Constants.TimeColumn} must be included in the selects")
     if (groupByConf.dataModel == api.DataModel.Entities) {
       assert(selectedDf.schema.fieldNames.contains(Constants.MutationTimeColumn), "Required Mutation ts")
     }
@@ -174,14 +173,14 @@ class GroupBy(inputStream: DataFrame,
           val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.from(ZoneOffset.UTC))
           val pstFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.of("America/Los_Angeles"))
           logger.info(s"""
-               |streaming dataset: $streamingDataset
-               |keys: ${gson.toJson(keys)}
-               |values: ${gson.toJson(values)}
-               |keyBytes: ${Base64.getEncoder.encodeToString(keyBytes)}
-               |valueBytes: ${Base64.getEncoder.encodeToString(valueBytes)}
-               |ts: $ts  |  UTC: ${formatter.format(Instant.ofEpochMilli(ts))} | PST: ${pstFormatter.format(
+                         |streaming dataset: $streamingDataset
+                         |keys: ${gson.toJson(keys)}
+                         |values: ${gson.toJson(values)}
+                         |keyBytes: ${Base64.getEncoder.encodeToString(keyBytes)}
+                         |valueBytes: ${Base64.getEncoder.encodeToString(valueBytes)}
+                         |ts: $ts  |  UTC: ${formatter.format(Instant.ofEpochMilli(ts))} | PST: ${pstFormatter.format(
             Instant.ofEpochMilli(ts))}
-               |""".stripMargin)
+                         |""".stripMargin)
         }
         KVStore.PutRequest(keyBytes, valueBytes, streamingDataset, Option(ts))
       }

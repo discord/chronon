@@ -11,6 +11,7 @@ lazy val scala213 = "2.13.6"
 lazy val spark2_4_0 = "2.4.0"
 lazy val spark3_1_1 = "3.1.1"
 lazy val spark3_2_1 = "3.2.1"
+lazy val spark3_5_3 = "3.5.3"
 lazy val tmp_warehouse = "/tmp/chronon/"
 
 ThisBuild / organization := "ai.chronon"
@@ -36,6 +37,9 @@ ThisBuild / developers := List(
   )
 )
 ThisBuild / assembly / test := {}
+
+val use_spark_3_5 = settingKey[Boolean]("Flag to build for 3.5")
+ThisBuild / use_spark_3_5 := true
 
 def buildTimestampSuffix = ";build.timestamp=" + new java.util.Date().getTime
 lazy val publishSettings = Seq(
@@ -92,17 +96,17 @@ lazy val root = (project in file("."))
 // Git related config
 git.useGitDescribe := true
 git.gitTagToVersionNumber := { tag: String => {
-    // Git plugin will automatically add SNAPSHOT for dirty workspaces so remove it to avoid duplication.
-    val versionStr = if (git.gitUncommittedChanges.value) version.value.replace("-SNAPSHOT", "") else version.value
-    val branchTag = git.gitCurrentBranch.value.replace("/", "-")
-    if (branchTag == "main" || branchTag == "master") {
-      // For main branches, we tag the packages as <package-name>-<build-version>
-      Some(s"${versionStr}")
-    } else {
-      // For user branches, we tag the packages as <package-name>-<user-branch>-<build-version>
-      Some(s"${branchTag}-${versionStr}")
-    }
+  // Git plugin will automatically add SNAPSHOT for dirty workspaces so remove it to avoid duplication.
+  val versionStr = if (git.gitUncommittedChanges.value) version.value.replace("-SNAPSHOT", "") else version.value
+  val branchTag = git.gitCurrentBranch.value.replace("/", "-")
+  if (branchTag == "main" || branchTag == "master") {
+    // For main branches, we tag the packages as <package-name>-<build-version>
+    Some(s"${versionStr}")
+  } else {
+    // For user branches, we tag the packages as <package-name>-<user-branch>-<build-version>
+    Some(s"${branchTag}-${versionStr}")
   }
+}
 }
 git.versionProperty := {
   val versionStr = version.value
@@ -117,11 +121,11 @@ git.versionProperty := {
 }
 
 /**
-  * Versions are look up from mvn central - so we are fitting for three configurations
-  * scala 11 + spark 2.4: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.11/2.4.0
-  * scala 12 + spark 3.1.1: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.12/3.1.1
-  * scala 13 + spark 3.2.1: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.13/3.2.1
-  */
+ * Versions are look up from mvn central - so we are fitting for three configurations
+ * scala 11 + spark 2.4: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.11/2.4.0
+ * scala 12 + spark 3.1.1: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.12/3.1.1
+ * scala 13 + spark 3.2.1: https://mvnrepository.com/artifact/org.apache.spark/spark-core_2.13/3.2.1
+ */
 val VersionMatrix: Map[String, VersionDependency] = Map(
   "spark-sql" -> VersionDependency(
     Seq(
@@ -131,6 +135,15 @@ val VersionMatrix: Map[String, VersionDependency] = Map(
     Some(spark2_4_0),
     Some(spark3_1_1),
     Some(spark3_2_1)
+  ),
+  "spark-sql-3-5" -> VersionDependency(
+    Seq(
+      "org.apache.spark" %% "spark-sql",
+      "org.apache.spark" %% "spark-core"
+    ),
+    Some(spark2_4_0),
+    Some(spark3_5_3),
+    Some(spark3_5_3)
   ),
   "spark-all" -> VersionDependency(
     Seq(
@@ -143,6 +156,18 @@ val VersionMatrix: Map[String, VersionDependency] = Map(
     Some(spark2_4_0),
     Some(spark3_1_1),
     Some(spark3_2_1)
+  ),
+  "spark-all-3-5" -> VersionDependency(
+    Seq(
+      "org.apache.spark" %% "spark-sql",
+      "org.apache.spark" %% "spark-hive",
+      "org.apache.spark" %% "spark-core",
+      "org.apache.spark" %% "spark-streaming",
+      "org.apache.spark" %% "spark-sql-kafka-0-10"
+    ),
+    Some(spark2_4_0),
+    Some(spark3_5_3),
+    Some(spark3_5_3)
   ),
   "scala-reflect" -> VersionDependency(
     Seq("org.scala-lang" % "scala-reflect"),
@@ -211,7 +236,7 @@ def fromMatrix(scalaVersion: String, modules: String*): Seq[ModuleID] =
       mod = module.replace("/provided", "")
     }
     assert(VersionMatrix.contains(mod),
-           s"Version matrix doesn't contain module: $mod, pick one of ${VersionMatrix.keys.toSeq}")
+      s"Version matrix doesn't contain module: $mod, pick one of ${VersionMatrix.keys.toSeq}")
     val result = VersionMatrix(mod).of(scalaVersion)
     if (provided) result.map(_ % "provided") else result
   }
@@ -275,10 +300,10 @@ releasePromptTask := {
   var wait = true
   while (wait) {
     println(s"""
-            |[WARNING] Scala artifacts have been published to the Sonatype staging.
-            |Please verify the Java builds are in order before proceeding with the Python API release.
-            |Python release is irreversible. So proceed with caution.
-            |""".stripMargin)
+               |[WARNING] Scala artifacts have been published to the Sonatype staging.
+               |Please verify the Java builds are in order before proceeding with the Python API release.
+               |Python release is irreversible. So proceed with caution.
+               |""".stripMargin)
     val userInput = StdIn.readLine(s"Do you want to continue with the release: (y)es (n)o ? ").trim.toLowerCase
     if (userInput == "yes" || userInput == "y") {
       println("Continuing with the Python API release..")
@@ -339,19 +364,19 @@ lazy val online_unshaded = (project in file("online"))
       "com.github.ben-manes.caffeine" % "caffeine" % "2.8.5"
     ),
     libraryDependencies ++= fromMatrix(scalaVersion.value,
-                                       "jackson",
-                                       "avro",
-                                       "spark-all/provided",
-                                       "scala-parallel-collections",
-                                       "netty-buffer")
+      "jackson",
+      "avro",
+      "spark-all/provided",
+      "scala-parallel-collections",
+      "netty-buffer")
   )
 
 
 def cleanSparkMeta(): Unit = {
   Folder.clean(file(".") / "spark" / "spark-warehouse*",
-               file(tmp_warehouse) / "spark-warehouse*",
-               file(".") / "spark" / "metastore_db*",
-               file(tmp_warehouse) / "metastore_db*")
+    file(tmp_warehouse) / "spark-warehouse*",
+    file(".") / "spark" / "metastore_db*",
+    file(tmp_warehouse) / "metastore_db*")
 }
 
 val sparkBaseSettings: Seq[Setting[_]] = Seq(
@@ -359,6 +384,20 @@ val sparkBaseSettings: Seq[Setting[_]] = Seq(
   assembly / artifact := {
     val art = (assembly / artifact).value
     art.withClassifier(Some("assembly"))
+  },
+  Compile / unmanagedSources := {
+    val sources = (Compile / unmanagedSources).value
+    val srcDir = (Compile / sourceDirectory).value
+
+    val spark_3_5_encoder = srcDir / "spark-3_5_plus" / "ai" / "chronon" / "spark" / "EncoderUtil.scala"
+    val spark_default_encoder = srcDir / "spark-default" / "ai" / "chronon" / "spark" / "EncoderUtil.scala"
+
+    val filteredSources = sources.filterNot(f =>
+      f.getAbsolutePath == spark_3_5_encoder.getAbsolutePath ||
+        f.getAbsolutePath == spark_default_encoder.getAbsolutePath
+    )
+
+    filteredSources :+ (if (use_spark_3_5.value) spark_3_5_encoder else spark_default_encoder)
   },
   mainClass in (Compile, run) := Some("ai.chronon.spark.Driver"),
   cleanFiles ++= Seq(file(tmp_warehouse)),
@@ -373,7 +412,10 @@ lazy val spark_uber = (project in file("spark"))
     sparkBaseSettings,
     version := git.versionProperty.value,
     crossScalaVersions := supportedVersions,
-    libraryDependencies ++= fromMatrix(scalaVersion.value, "jackson", "spark-all/provided", "delta-core/provided")
+    libraryDependencies ++= (if (use_spark_3_5.value)
+      fromMatrix(scalaVersion.value, "jackson", "spark-all-3-5/provided", "delta-core/provided")
+    else
+      fromMatrix(scalaVersion.value, "jackson", "spark-all/provided", "delta-core/provided"))
   )
 
 lazy val spark_embedded = (project in file("spark"))
@@ -382,7 +424,10 @@ lazy val spark_embedded = (project in file("spark"))
     sparkBaseSettings,
     version := git.versionProperty.value,
     crossScalaVersions := supportedVersions,
-    libraryDependencies ++= fromMatrix(scalaVersion.value, "spark-all", "delta-core"),
+    libraryDependencies ++= (if (use_spark_3_5.value)
+      fromMatrix(scalaVersion.value, "spark-all-3-5", "delta-core")
+    else
+      fromMatrix(scalaVersion.value, "spark-all", "delta-core")),
     target := target.value.toPath.resolveSibling("target-embedded").toFile,
     Test / test := {}
   )
@@ -393,10 +438,10 @@ lazy val flink = (project in file("flink"))
     publishSettings,
     crossScalaVersions := List(scala212),
     libraryDependencies ++= fromMatrix(scalaVersion.value,
-                                       "avro",
-                                       "spark-all/provided",
-                                       "scala-parallel-collections",
-                                       "flink")
+      "avro",
+      "spark-all/provided",
+      "scala-parallel-collections",
+      "flink")
   )
 
 lazy val service = (project in file("service"))

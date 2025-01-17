@@ -22,10 +22,9 @@ import ai.chronon.api._
 import ai.chronon.online.Fetcher.Request
 import ai.chronon.online.KVStore.PutRequest
 import ai.chronon.online._
-import ai.chronon.spark.{GenericRowHandler, TableUtils}
+import ai.chronon.spark.{GenericRowHandler, TableUtils, EncoderUtil}
 import com.google.gson.Gson
 import org.apache.spark.api.java.function.{MapPartitionsFunction, VoidFunction2}
-import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.streaming.{DataStreamWriter, Trigger}
 import org.apache.spark.sql.types.{BooleanType, LongType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Dataset, Encoder, Encoders, Row, SparkSession}
@@ -60,10 +59,10 @@ object LocalIOCache {
 }
 
 class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map.empty, debug: Boolean, lagMillis: Int)(
-    implicit
-    session: SparkSession,
-    apiImpl: Api)
-    extends Serializable {
+  implicit
+  session: SparkSession,
+  apiImpl: Api)
+  extends Serializable {
   @transient implicit lazy val logger = LoggerFactory.getLogger(getClass)
 
   val context: Metrics.Context = Metrics.Context(Metrics.Environment.GroupByStreaming, groupByConf)
@@ -72,7 +71,7 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
                              leftSourceSchema: StructType,
                              joinSchema: StructType,
                              joinSourceSchema: StructType)
-      extends Serializable
+    extends Serializable
 
   val valueZSchema: api.StructType = groupByConf.dataModel match {
     case api.DataModel.Events   => servingInfoProxy.valueChrononSchema
@@ -138,14 +137,14 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
         val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.from(ZoneOffset.UTC))
         val pstFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.of("America/Los_Angeles"))
         logger.info(s"""
-             |dataset: $streamingDataset
-             |keys: ${gson.toJson(keys)}
-             |values: ${gson.toJson(values)}
-             |keyBytes: ${Base64.getEncoder.encodeToString(keyBytes)}
-             |valueBytes: ${Base64.getEncoder.encodeToString(valueBytes)}
-             |ts: $ts|  UTC: ${formatter.format(Instant.ofEpochMilli(ts))}| PST: ${pstFormatter.format(
+                       |dataset: $streamingDataset
+                       |keys: ${gson.toJson(keys)}
+                       |values: ${gson.toJson(values)}
+                       |keyBytes: ${Base64.getEncoder.encodeToString(keyBytes)}
+                       |valueBytes: ${Base64.getEncoder.encodeToString(valueBytes)}
+                       |ts: $ts|  UTC: ${formatter.format(Instant.ofEpochMilli(ts))}| PST: ${pstFormatter.format(
           Instant.ofEpochMilli(ts))}
-             |""".stripMargin)
+                       |""".stripMargin)
       }
       KVStore.PutRequest(keyBytes, valueBytes, streamingDataset, Option(ts))
     }
@@ -201,18 +200,18 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
     // Join ->
     //   Join.left -> (left.(table, mutation_stream, etc) + inner_query)
     logger.info(s"""
-       |Schemas across chain of transformations
-       |leftSchema:
-       |  ${leftSchema.catalogString}
-       |left stream Schema:
-       |  ${leftStreamSchema.catalogString}
-       |left schema after applying left query:
-       |  ${leftSourceSchema.catalogString}
-       |join schema:
-       |  ${joinSchema.catalogString}
-       |join schema after applying joinSource.query:
-       |  ${joinSourceSchema.catalogString}
-       |""".stripMargin)
+                   |Schemas across chain of transformations
+                   |leftSchema:
+                   |  ${leftSchema.catalogString}
+                   |left stream Schema:
+                   |  ${leftStreamSchema.catalogString}
+                   |left schema after applying left query:
+                   |  ${leftSourceSchema.catalogString}
+                   |join schema:
+                   |  ${joinSchema.catalogString}
+                   |join schema after applying joinSource.query:
+                   |  ${joinSourceSchema.catalogString}
+                   |""".stripMargin)
 
     Schemas(leftStreamSchema, leftSourceSchema, joinSchema, joinSourceSchema)
   }
@@ -249,17 +248,17 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
       }
     val streamSchema = SparkConversions.fromChrononSchema(streamDecoder.schema)
     logger.info(s"""
-         | streaming source: ${groupByConf.streamingSource.get}
-         | streaming dataset: ${groupByConf.streamingDataset}
-         | stream schema: ${streamSchema.catalogString}
-         |""".stripMargin)
+                   | streaming source: ${groupByConf.streamingSource.get}
+                   | streaming dataset: ${groupByConf.streamingDataset}
+                   | stream schema: ${streamSchema.catalogString}
+                   |""".stripMargin)
 
     val des = deserialized
       .flatMap { mutation =>
         Seq(mutation.after, mutation.before)
           .filter(_ != null)
           .map(SparkConversions.toSparkRow(_, streamDecoder.schema, GenericRowHandler.func).asInstanceOf[Row])
-      }(RowEncoder(streamSchema))
+      }(EncoderUtil(streamSchema))
     dataStream.copy(df = des)
   }
 
@@ -310,10 +309,10 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
     def applyQuery(df: DataFrame, query: api.Query): DataFrame = {
       val queryParts = groupByConf.buildQueryParts(query)
       logger.info(s"""
-           |decoded schema: ${decoded.df.schema.catalogString}
-           |queryParts: $queryParts
-           |df schema: ${df.schema.prettyJson}
-           |""".stripMargin)
+                     |decoded schema: ${decoded.df.schema.catalogString}
+                     |queryParts: $queryParts
+                     |df schema: ${df.schema.prettyJson}
+                     |""".stripMargin)
 
       // apply left.query
       val selected = queryParts.selects.map(_.toSeq).map(exprs => df.selectExpr(exprs: _*)).getOrElse(df)
@@ -333,7 +332,7 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
       decoded.df.schema
         .filter(field =>
           reqColumns
-          // handle nested struct, only the parent struct is needed here
+            // handle nested struct, only the parent struct is needed here
             .map(col => if (col.contains(".")) col.split("\\.")(0) else col)
             .contains(field.name))
         .toSet
@@ -342,14 +341,14 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
 
     val schemas = buildSchemas(leftSchema)
     val joinChrononSchema = SparkConversions.toChrononSchema(schemas.joinSchema)
-    val joinEncoder: Encoder[Row] = RowEncoder(schemas.joinSchema)
+    val joinEncoder: Encoder[Row] = EncoderUtil(schemas.joinSchema)
     val joinFields = schemas.joinSchema.fieldNames
     val leftColumns = schemas.leftSourceSchema.fieldNames
     logger.info(s"""
-         |left columns ${leftColumns.mkString(",")}
-         |reqColumns ${reqColumns.mkString(",")}
-         |Fetching upstream join to enrich the stream... Fetching lag time: $lagMillis
-         |""".stripMargin)
+                   |left columns ${leftColumns.mkString(",")}
+                   |reqColumns ${reqColumns.mkString(",")}
+                   |Fetching upstream join to enrich the stream... Fetching lag time: $lagMillis
+                   |""".stripMargin)
 
     // todo: add proper timestamp to the fetcher
     val leftTimeIndex = leftColumns.indexWhere(_ == eventTimeColumn)
@@ -407,7 +406,7 @@ class JoinSourceRunner(groupByConf: api.GroupBy, conf: Map[String, String] = Map
 
             SparkConversions
               .toSparkRow(joinFields.map(f => allFields.getOrElse(f, null)),
-                          api.StructType.from("record", joinChrononSchema))
+                api.StructType.from("record", joinChrononSchema))
               .asInstanceOf[Row]
           }.toJava
         }
